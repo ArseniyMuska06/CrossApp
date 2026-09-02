@@ -7,3 +7,7 @@
  dotnet run --project src/Cli
  ## Середовище
  .NET SDK 8.0, Windows 11 x64
+ ## Додаткове завдання
+ Розміри self-contained публікацій:
+ - win-x64 — 70.4 МБ
+ - linux-x64 — 70.5 МБ
