@@ -12,3 +12,4 @@ Console.WriteLine($"Архітектура   : {report.ProcessArchitecture}");
 Console.WriteLine($"RID (визначено): {report.DetectedRid}");
 Console.WriteLine($"RID (від .NET) : {report.ReportedRid}");
 Console.WriteLine($"Каталог       : {report.BaseDirectory}");
+Console.WriteLine($"Збірка        : {report.BuildNote}");

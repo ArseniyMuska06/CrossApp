@@ -8,7 +8,8 @@
 
 ```powershell
 dotnet build
-dotnet run --project src/Cli
+dotnet run --project src/Cli -f net8.0
+dotnet run --project src/Cli -f net10.0
 ```
 
  ## Середовище
@@ -74,3 +75,20 @@ Framework-dependent містить застосунок і його залежн
  Розміри self-contained публікацій:
  - win-x64 — 70.4 МБ
  - linux-x64 — 70.5 МБ
+
+ ## Додаткове завдання — ЛР №2
+Усі публікації створено для RID win-x64 у конфігурації Release.
+
+| Варіант публікації | Кількість файлів | Розмір, МБ |
+|---|---:|---:|
+| Self-contained | 189 | 70,68 |
+| Framework-dependent | 7 | 0,18 |
+| Self-contained + SingleFile | 3 | 64,3 |
+| Self-contained + Trimming | 28 | 18,1 |
+
+Попередження під час публікації з trimming: не було помічено мною.
+
+SingleFile об’єднує керовані компоненти застосунку в один виконуваний
+файл. Нативні бібліотеки та файли налагодження можуть залишатися окремо.
+
+Trimming зменшує розмір публікації шляхом видалення невикористаного коду.
