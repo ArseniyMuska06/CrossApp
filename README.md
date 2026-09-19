@@ -17,18 +17,23 @@ dotnet run --project src/Cli -f net10.0
 
 ## Структура solution
 - CrossApp.sln — файл рішення.
-- src/Core/ — бібліотека збору інформації про середовище.
+- src/Core/ — бібліотека збору інформації про середовище та імпорту даних.
   - Core.csproj — налаштування бібліотеки.
   - EnvironmentInfo.cs — клас EnvironmentInfo та запис EnvironmentReport.
+  - Dto/ — типи ProductDto, WarehouseDto та ImportResult<T>.
+  - Import/ — імпортери ProductCsvImporter, ProductJsonImporter
+    та MixedCsvImporter.
 - src/Cli/ — консольний застосунок.
   - Cli.csproj — налаштування застосунку та посилання на Core.
-  - Program.cs — виклик Core, форматування та виведення даних.
+  - Program.cs — обробка аргументів, вибір імпортера, виведення
+    даних, помилок і статистики.
+- data/ — тестові CSV- та JSON-файли.
 
 Напрямок залежності: Cli → Core.
-Core збирає та повертає дані, а Cli виводить їх у консоль.
+Core збирає інформацію про середовище та виконує імпорт даних.
+Cli відповідає за взаємодію з користувачем і консольний вивід.
 
 Заплановані каталоги Core:
-- Dto/ — record-типи для передавання даних.
 - Domain/ — сутності з поведінкою та інваріантами.
 - Storage/ — реалізації сховищ.
 
@@ -92,3 +97,34 @@ SingleFile об’єднує керовані компоненти застос�
 файл. Нативні бібліотеки та файли налагодження можуть залишатися окремо.
 
 Trimming зменшує розмір публікації шляхом видалення невикористаного коду.
+
+## ЛР №3 — імпорт даних
+
+Реалізовано імпорт товарів із CSV/JSON, імпорт товарів і складів
+за префіксами P/W та виведення статистики й помилок.
+
+### Формат файлів
+
+Кодування всіх файлів — UTF-8.
+
+- CSV: роздільник `;`, заголовок `id;sku;name;unit;quantity`.
+  Кількість — ціле невід’ємне число.
+- JSON: масив товарів із властивостями `id`, `sku`, `name`,
+  `unit`, `quantity` та необов’язковою `note`.
+- Змішаний CSV: без заголовка, роздільник `;`.
+  Товар — `P;id;sku;name;unit;quantity`,
+  склад — `W;id;name;address`. Адреса може бути порожньою.
+
+`valid.csv` містить коректні дані. У `sample.csv`, `sample.json`
+і `mixed.csv` навмисно додано помилкові записи.
+
+### Запуск із кореня CrossApp
+
+```powershell
+dotnet run --project src/Cli -f net10.0 -- data/valid.csv
+dotnet run --project src/Cli -f net10.0 -- data/sample.csv
+dotnet run --project src/Cli -f net10.0 -- data/sample.json
+dotnet run --project src/Cli -f net10.0 -- data/mixed.csv --mixed
+```
+
+Без шляху використовується `data/sample.csv`.
