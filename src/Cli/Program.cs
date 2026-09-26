@@ -3,6 +3,7 @@ using System.Text.Json;
 using Core;
 using Core.Dto;
 using Core.Import;
+using Core.Domain;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
@@ -18,6 +19,48 @@ Console.WriteLine($"RID (визначено): {report.DetectedRid}");
 Console.WriteLine($"RID (від .NET): {report.ReportedRid}");
 Console.WriteLine($"Каталог       : {report.BaseDirectory}");
 Console.WriteLine($"Збірка        : {report.BuildNote}");
+
+Console.WriteLine();
+Console.WriteLine("Доменна модель — склад");
+Console.WriteLine(new string('-', 52));
+
+Console.WriteLine("=== Сценарій 1: успіх ===");
+
+Product product = Product.Create(
+    "P-001", "sku-001", "Цемент М400 25кг", "шт", 100);
+
+Console.WriteLine(
+    $"Початковий залишок {product.Sku}: {product.Quantity} {product.Unit}");
+
+product.RegisterArrival(50);
+Console.WriteLine(
+    $"Після приходу 50: {product.Quantity} {product.Unit}");
+
+product.Issue(30);
+Console.WriteLine(
+    $"Після видачі 30: {product.Quantity} {product.Unit}");
+
+Console.WriteLine();
+Console.WriteLine("=== Сценарій 2: порушення інваріантів ===");
+
+TryDo("Видача більша за залишок",
+    () => product.Issue(1000));
+
+TryDo("Порожній SKU",
+    () => Product.Create("P-002", " ", "Пісок", "т", 10));
+
+TryDo("Від'ємний початковий залишок",
+    () => Product.Create("P-003", "SKU-003", "Цегла", "шт", -5));
+
+TryDo("Нульова кількість приходу",
+    () => product.RegisterArrival(0));
+
+TryDo("Від'ємна кількість видачі",
+    () => product.Issue(-10));
+
+Console.WriteLine();
+Console.WriteLine(
+    $"Залишок після всіх відмов: {product.Quantity} {product.Unit}");
 
 Console.WriteLine();
 Console.WriteLine("Імпорт даних");
@@ -133,4 +176,19 @@ static void PrintResult<T>(ImportResult<T> result)
         $"прийнято — {accepted}; " +
         $"пропущено — {skipped}; " +
         $"помилок — {percentText}%");
+}
+
+static void TryDo(string title, Action action)
+{
+    try
+    {
+        action();
+        Console.WriteLine(
+            $"{title}: виняток НЕ спрацював — перевірте інваріант!");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine(
+            $"{title}: {ex.GetType().Name} — {ex.Message}");
+    }
 }
