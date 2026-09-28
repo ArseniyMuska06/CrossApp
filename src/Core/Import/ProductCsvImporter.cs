@@ -11,6 +11,7 @@ public static class ProductCsvImporter
     {
         var items = new List<ProductDto>();
         var errors = new List<string>();
+        var sourceLineNumbers = new List<int>();
 
         string[] lines = File.ReadAllLines(path);
 
@@ -30,6 +31,7 @@ public static class ProductCsvImporter
             {
                 case ParseOk ok:
                     items.Add(ok.Value);
+                    sourceLineNumbers.Add(number);
                     break;
 
                 case ParseFailed failed:
@@ -38,7 +40,8 @@ public static class ProductCsvImporter
             }
         }
 
-        return new ImportResult<ProductDto>(items, errors);
+        return new ImportResult<ProductDto>(
+            items, errors, sourceLineNumbers);
     }
 
     private static ParseOutcome ParseLine(string line)

@@ -103,7 +103,10 @@ try
                 $"Непідтримуване розширення: {extension}")
         };
 
-        PrintResult(result);
+        ImportResult<Product> domainResult = ProductDomainMapper.Map(result);
+
+        Console.WriteLine("Результат імпорту та перевірки доменних правил:");
+        PrintResult(domainResult);
     }
 
     return 0;
@@ -137,6 +140,10 @@ static void PrintResult<T>(ImportResult<T> result)
     {
         string text = item switch
         {
+            Product p =>
+                $"Товар: {p.Id,-6} {p.Sku,-10} " +
+                $"{p.Name,-32} {p.Quantity,5} {p.Unit}",
+
             ProductDto p =>
                 $"Товар: {p.Id,-6} {p.Sku,-10} " +
                 $"{p.Name,-32} {p.Quantity,5} {p.Unit}",
