@@ -6,28 +6,30 @@ using Core.Import;
 using Core.Domain;
 using Core.Abstractions;
 using Core.Services;
-using Core.Storage;
+using Cli;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
 if (args.Length == 0 ||
     (args.Length == 1 && args[0] == "--file"))
 {
-    bool useFile = args.Contains("--file");
-
-    string dataPath = Path.Combine(
-        AppContext.BaseDirectory, "data", "catalog.json");
-
-    ICatalogStore store = useFile
-        ? new FileCatalogStore(dataPath)
-        : new InMemoryCatalogStore(SampleData.Products());
-
+    ICatalogStore store = StoreFactory.Create(args);
     var service = new CatalogService(store);
 
-    Console.WriteLine($"Сховище: {store.GetType().Name}");
+    bool useFile = args.Contains("--file");
+
+    Console.WriteLine(
+        useFile
+            ? "Сховище: CachingCatalogStore → FileCatalogStore"
+            : "Сховище: CachingCatalogStore → InMemoryCatalogStore");
 
     if (useFile)
+    {
+        string dataPath = Path.Combine(
+            AppContext.BaseDirectory, "data", "catalog.json");
+
         Console.WriteLine($"Файл даних: {dataPath}");
+    }
 
     var created = service.Add(
         "SKU-101", "Кабель UTP cat6", "м", 50);
@@ -61,6 +63,61 @@ if (args.Length == 0 ||
         Console.WriteLine(
             $" {p.Id,-8} {p.Sku,-10} {p.Name,-25} " +
             $"{p.Quantity,5} {p.Unit}");
+    }
+
+    Console.WriteLine();
+    Console.WriteLine("Перевірка кешування:");
+
+    var firstList = service.All();
+    var secondList = service.All();
+
+    Console.WriteLine(
+        $"Повторно використано кеш списку: " +
+        $"{ReferenceEquals(firstList, secondList)}");
+
+    // Нульовий залишок допустимий за правилами Product.
+    var cacheTest = service.Add(
+        "SKU-CACHE", "Тестовий товар", "шт", 0);
+
+    var refreshedList = service.All();
+
+    Console.WriteLine(
+        $"Кеш оновлено після додавання: " +
+        $"{!ReferenceEquals(secondList, refreshedList)}");
+
+    Console.WriteLine(
+        $"Кількість товарів збільшилася на 1: " +
+        $"{refreshedList.Count == firstList.Count + 1}");
+
+    store.Remove(cacheTest.Id);
+
+    Console.WriteLine();
+    Console.WriteLine("Пошук товарів із залишком менше 50:");
+
+    var lowStock = service.Search(p => p.Quantity < 50);
+
+    if (lowStock.Count == 0)
+        Console.WriteLine("Товарів не знайдено.");
+
+    foreach (var p in lowStock)
+    {
+        Console.WriteLine(
+            $" {p.Sku,-10} {p.Name,-25} {p.Quantity,5} {p.Unit}");
+    }
+
+    Console.WriteLine();
+    Console.WriteLine("Пошук товарів за назвою «кабель»:");
+
+    var cables = service.Search(p =>
+        p.Name.Contains("кабель", StringComparison.OrdinalIgnoreCase));
+
+    if (cables.Count == 0)
+        Console.WriteLine("Товарів не знайдено.");
+
+    foreach (var p in cables)
+    {
+        Console.WriteLine(
+            $" {p.Sku,-10} {p.Name,-25} {p.Quantity,5} {p.Unit}");
     }
 
     Console.WriteLine();
