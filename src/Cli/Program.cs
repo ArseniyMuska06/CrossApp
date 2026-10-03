@@ -4,8 +4,79 @@ using Core;
 using Core.Dto;
 using Core.Import;
 using Core.Domain;
+using Core.Abstractions;
+using Core.Services;
+using Core.Storage;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
+
+if (args.Length == 0 ||
+    (args.Length == 1 && args[0] == "--file"))
+{
+    bool useFile = args.Contains("--file");
+
+    string dataPath = Path.Combine(
+        AppContext.BaseDirectory, "data", "catalog.json");
+
+    ICatalogStore store = useFile
+        ? new FileCatalogStore(dataPath)
+        : new InMemoryCatalogStore(SampleData.Products());
+
+    var service = new CatalogService(store);
+
+    Console.WriteLine($"Сховище: {store.GetType().Name}");
+
+    if (useFile)
+        Console.WriteLine($"Файл даних: {dataPath}");
+
+    var created = service.Add(
+        "SKU-101", "Кабель UTP cat6", "м", 50);
+
+    Console.WriteLine(
+        $"Додано: {created.Name}, залишок {created.Quantity} {created.Unit}");
+
+    service.Receive(created.Id, 25);
+    Console.WriteLine($"Після приходу 25: {created.Quantity} {created.Unit}");
+
+    service.Issue(created.Id, 10);
+    Console.WriteLine($"Після видачі 10: {created.Quantity} {created.Unit}");
+
+    Console.WriteLine();
+    Console.WriteLine("Пошук за id:");
+
+    var found = service.Find(created.Id);
+
+    if (found is not null)
+    {
+        Console.WriteLine(
+            $"Знайдено: {found.Id} {found.Name}, " +
+            $"{found.Quantity} {found.Unit}");
+    }
+
+    Console.WriteLine();
+    Console.WriteLine("Список товарів:");
+
+    foreach (var p in service.All())
+    {
+        Console.WriteLine(
+            $" {p.Id,-8} {p.Sku,-10} {p.Name,-25} " +
+            $"{p.Quantity,5} {p.Unit}");
+    }
+
+    Console.WriteLine();
+    Console.WriteLine("Сценарій відмови: неіснуючий id");
+
+    try
+    {
+        service.Receive("NOT-FOUND", 10);
+    }
+    catch (InvalidOperationException ex)
+    {
+        Console.WriteLine($"Помилка: {ex.Message}");
+    }
+
+    return 0;
+}
 
 EnvironmentReport report = EnvironmentInfo.Collect();
 
