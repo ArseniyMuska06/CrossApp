@@ -8,6 +8,7 @@ using Core.Abstractions;
 using Core.Services;
 using Core.Events;
 using Cli;
+using Cli.Notifications;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
@@ -181,11 +182,38 @@ if (args.Length == 0 ||
 
     service.Receive(created.Id, 5);
 
-    Console.WriteLine($"Залишок після операції: {created.Quantity} {created.Unit}");
-    Console.WriteLine($"Подій отримано: {changes}");
+        Console.WriteLine($"Залишок після операції: {created.Quantity} {created.Unit}");
+        Console.WriteLine($"Подій отримано: {changes}");
 
-    return 0;
-}
+        Console.WriteLine();
+        Console.WriteLine("Додаткове завдання: INotificationSink");
+
+        Console.WriteLine("ConsoleSink:");
+
+        var consoleService = new CatalogService(store, new ConsoleSink());
+        consoleService.Receive(created.Id, 1);
+
+        Console.WriteLine(
+            $"Залишок після ConsoleSink: {created.Quantity} {created.Unit}");
+
+        Console.WriteLine();
+        Console.WriteLine("FileSink:");
+
+        var sinkLogPath = Path.Combine(
+            AppContext.BaseDirectory,
+            "logs",
+            "sink.log");
+
+        var fileService = new CatalogService(store, new FileSink(sinkLogPath));
+        fileService.Receive(created.Id, 2);
+
+        Console.WriteLine(
+            $"Залишок після FileSink: {created.Quantity} {created.Unit}");
+
+        Console.WriteLine($"Журнал FileSink: {sinkLogPath}");
+
+        return 0;
+    }
 
 EnvironmentReport report = EnvironmentInfo.Collect();
 
@@ -276,7 +304,9 @@ try
     {
         ImportResult<ProductDto> result = extension switch
         {
-            ".csv" => ProductCsvImporter.Load(path),
+            ".csv" => ProductCsvImporter.Load(
+                path,
+                message => Console.WriteLine($"[Імпорт] Пропущено {message}")),
             ".json" => ProductJsonImporter.Load(path),
 
             _ => throw new NotSupportedException(
