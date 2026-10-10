@@ -1,5 +1,6 @@
 using Core.Abstractions;
 using Core.Domain;
+using Core.Events;
 
 namespace Core.Services;
 
@@ -7,6 +8,17 @@ public sealed class CatalogService(ICatalogStore store)
 {
     private readonly ICatalogStore _store =
         store ?? throw new ArgumentNullException(nameof(store));
+
+    public event EventHandler<CatalogChangedEventArgs>? Changed;
+
+    private void OnChanged(Product product, CatalogChangeKind kind, int delta) =>
+        Changed?.Invoke(
+            this,
+            new CatalogChangedEventArgs(
+                product.Id,
+                kind,
+                delta,
+                product.Quantity));
 
     public Product Add(string sku, string name, string unit, int quantity)
     {
@@ -18,6 +30,8 @@ public sealed class CatalogService(ICatalogStore store)
             quantity);
 
         _store.Add(product);
+        OnChanged(product, CatalogChangeKind.Added, quantity);
+
         return product;
     }
 
@@ -29,6 +43,8 @@ public sealed class CatalogService(ICatalogStore store)
 
         product.RegisterArrival(quantity);
         _store.Update(product);
+
+        OnChanged(product, CatalogChangeKind.Received, quantity);
     }
 
     public void Issue(string id, int quantity)
@@ -39,13 +55,15 @@ public sealed class CatalogService(ICatalogStore store)
 
         product.Issue(quantity);
         _store.Update(product);
+
+        OnChanged(product, CatalogChangeKind.Issued, -quantity);
     }
 
     public IReadOnlyList<Product> All() => _store.List();
 
     public Product? Find(string id) => _store.GetById(id);
 
-    public IReadOnlyList<Product> Search(Func<Product, bool> predicate)
+    public IReadOnlyList<Product> FindAll(Func<Product, bool> predicate)
     {
         ArgumentNullException.ThrowIfNull(predicate);
 
@@ -53,4 +71,7 @@ public sealed class CatalogService(ICatalogStore store)
             .Where(predicate)
             .ToList();
     }
+
+    public IReadOnlyList<Product> Search(Func<Product, bool> predicate) =>
+        FindAll(predicate);
 }

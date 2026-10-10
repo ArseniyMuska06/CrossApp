@@ -6,6 +6,7 @@ using Core.Import;
 using Core.Domain;
 using Core.Abstractions;
 using Core.Services;
+using Core.Events;
 using Cli;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
@@ -15,6 +16,26 @@ if (args.Length == 0 ||
 {
     ICatalogStore store = StoreFactory.Create(args);
     var service = new CatalogService(store);
+
+    var logPath = Path.Combine(
+        AppContext.BaseDirectory,
+        "logs",
+        "app.log");
+
+    Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+
+    void OnCatalogChanged(object? sender, CatalogChangedEventArgs e)
+    {
+        var line = $"{e.At:HH:mm:ss} {e.Kind,-8} {e.Id} {e.Delta,4:+0;-0} → залишок {e.QuantityAfter}";
+
+        Console.WriteLine(line);
+        File.AppendAllText(logPath, line + Environment.NewLine);
+    }
+
+    service.Changed += OnCatalogChanged;
+
+    int changes = 0;
+    service.Changed += (_, _) => changes++;
 
     bool useFile = args.Contains("--file");
 
@@ -121,6 +142,24 @@ if (args.Length == 0 ||
     }
 
     Console.WriteLine();
+
+    Console.WriteLine("Пошук товарів із залишком менше 10:");
+
+    var veryLowStock = service.FindAll(p => p.Quantity < 10);
+
+    if (veryLowStock.Count == 0)
+    {
+        Console.WriteLine("Товарів не знайдено.");
+    }
+
+    foreach (var p in veryLowStock)
+    {
+        Console.WriteLine(
+            $" {p.Sku,-10} {p.Name,-25} {p.Quantity,5} {p.Unit}");
+    }
+
+    Console.WriteLine();
+
     Console.WriteLine("Сценарій відмови: неіснуючий id");
 
     try
@@ -131,6 +170,19 @@ if (args.Length == 0 ||
     {
         Console.WriteLine($"Помилка: {ex.Message}");
     }
+
+    Console.WriteLine();
+    Console.WriteLine("Перевірка відписки:");
+
+    Console.WriteLine($"Подій отримано: {changes}");
+    Console.WriteLine($"Залишок до відписки: {created.Quantity} {created.Unit}");
+
+    service.Changed -= OnCatalogChanged;
+
+    service.Receive(created.Id, 5);
+
+    Console.WriteLine($"Залишок після операції: {created.Quantity} {created.Unit}");
+    Console.WriteLine($"Подій отримано: {changes}");
 
     return 0;
 }
