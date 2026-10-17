@@ -15,15 +15,15 @@ dotnet build
 ЛР №5-№6 — сховище в пам’яті:
 
 ```powershell
-dotnet run --project src/Cli -f net8.0
-dotnet run --project src/Cli -f net10.0
+dotnet run --project src/Cli -f net8.0 -- demo-events
+dotnet run --project src/Cli -f net10.0 -- demo-events
 ```
 
 ЛР №5-№6 — файлове сховище:
 
 ```powershell
-dotnet run --project src/Cli -f net8.0 -- --file
-dotnet run --project src/Cli -f net10.0 -- --file
+dotnet run --project src/Cli -f net8.0 -- demo-events --file
+dotnet run --project src/Cli -f net10.0 -- demo-events --file
 ```
 
 Інформація про середовище, сценарії ЛР №4 та імпорт даних:
@@ -68,7 +68,11 @@ dotnet run --project src/Cli -f net10.0 -- data/sample.csv
     - CatalogService.cs — додавання товарів, прихід, видача,
       отримання списку та пошук. Містить подію Changed,
       метод OnChanged і пошук FindAll через Func<Product, bool>.
-  - SampleData.cs — 15 початкових товарів для демонстрації.
+  - SampleData.cs — 18 початкових товарів для демонстрації.
+  - Reports/ — формування звітів через LINQ.
+    - StockLine.cs — DTO рядка звіту про товар.
+    - GroupSummary.cs — DTO підсумків групи.
+    - ReportService.cs — фільтрація, топ-N, групування та агрегати.
 
 - src/Cli/ — консольний застосунок.
   - Cli.csproj — налаштування застосунку та посилання на Core.
@@ -80,8 +84,11 @@ dotnet run --project src/Cli -f net10.0 -- data/sample.csv
     та імпорт даних зі статистикою.
     Організовує двох підписників події Changed, запис повідомлень
     у консоль і logs/app.log, перевірку лічильника та відписки.
+    Обробляє підкоманди report-top, report-low, report-groups,
+    report-sum, demo-deferred та demo-events.
   - StoreFactory.cs — вибір і створення сховища за аргументами
     запуску з підключенням декоратора кешування.
+  - DeferredExecutionDemo.cs — демонстрація відкладеного виконання LINQ.
 - data/ — тестові CSV- та JSON-файли.
 
 Напрямок залежності: Cli → Core.
@@ -179,8 +186,9 @@ dotnet run --project src/Cli -f net10.0 -- data/mixed.csv --mixed
 ```
 
 Для запуску імпорту потрібно явно передати шлях до файлу.
-Без аргументів запускається сценарій ЛР №5–6 зі сховищем у пам’яті,
-доменними подіями та логуванням.
+
+Без аргументів запускається звіт report-top.
+Для сценарію ЛР №5–6 потрібно передати команду demo-events.
 
 ## ЛР №4 — доменна модель
 
@@ -271,7 +279,7 @@ dotnet run --project src/Cli -f net10.0 -- data/domain-check.csv
 
 InMemoryCatalogStore зберігає товари у Dictionary.
 Початкові дані передаються через конструктор.
-У демонстрації використовується 15 товарів із SampleData.
+У демонстрації використовується 18 товарів із SampleData.
 Зміни існують лише до завершення програми.
 
 FileCatalogStore завантажує дані з JSON-файлу при першому
@@ -310,6 +318,9 @@ Cli → CatalogService → ICatalogStore.
 
 Залежності передаються вручну. Microsoft.Extensions.DependencyInjection не використовується.
 
+Сценарій запускається командою demo-events.
+Для файлового сховища додатково передається прапорець --file.
+
 ### Демонстраційний сценарій
 
 1. Вибір сховища: без --file — пам’ять, з --file — JSON-файл.
@@ -327,9 +338,10 @@ Cli → CatalogService → ICatalogStore.
 Помилка: Немає запису з id=NOT-FOUND.
 ```
 
-У режимі пам’яті кожен запуск містить 15 початкових товарів
-і один новий. У файловому режимі кожен запуск додає один товар
-із новим id, зберігаючи попередні записи.
+У режимі пам’яті сценарій demo-events починається з 18 товарів
+із SampleData та додає один новий товар. У файловому режимі
+кожен запуск цього сценарію додає один товар із новим id,
+зберігаючи попередні записи.
 
 ## Додаткові завдання — ЛР №5
 
@@ -530,3 +542,42 @@ Cli передає лямбду, яка виводить повідомленн�
 Результат: прийнято 10 записів, пропущено 3, помилок — 23,08%.
 Обробник вивів повідомлення про некоректні рядки 12–14.
 Помилки також збереглися в підсумковому списку Errors.
+
+## ЛР №7 — звіти через LINQ
+
+У Core/Reports реалізовано ReportService із чотирма методами:
+- LowStock — товари із залишком нижче заданого порога.
+- TopByQuantity — перші N товарів із найбільшими залишками.
+- ByUnit — групування за одиницею виміру з підрахунком позицій і суми залишків.
+- Totals — кількість позицій, сума, середній і максимальний залишки.
+
+Рядки звітів повертаються як DTO StockLine та GroupSummary,
+а загальні підсумки — як іменований кортеж.
+Логіка запитів розташована в Core, консольне виведення — у Cli.
+SampleData містить 18 товарів, серед яких 3 мають залишок менше 10.
+
+### Відкладене виконання
+
+У DeferredExecutionDemo виклик Where лише створює запит,
+а відбір товарів відбувається під час кожного виклику Count().
+Після додавання до локального списку товару «Скоба» із залишком 3
+повторний Count() повертає на один товар більше, оскільки виконує
+запит заново для зміненого джерела.
+Виклик ToList() виконує запит і зберігає результат в окремому
+списку snapshot, який зберігає свої елементи після очищення source.
+Читання властивості snapshot.Count не запускає запит повторно.
+
+### Команди запуску
+
+Команди виконуються з кореня CrossApp:
+
+    dotnet run --project src/Cli -- report-top
+    dotnet run --project src/Cli -- report-low
+    dotnet run --project src/Cli -- report-groups
+    dotnet run --project src/Cli -- report-sum
+    dotnet run --project src/Cli -- demo-deferred
+
+Без аргументів запускається report-top.
+Для звіту з файлового сховища додається прапорець --file:
+
+    dotnet run --project src/Cli -- report-top --file

@@ -22,7 +22,10 @@ public static class SampleData
             Product.Create("P-012", "SKU-012", "Дюбелі", "шт", 2000),
             Product.Create("P-013", "SKU-013", "Плитковий клей", "шт", 70),
             Product.Create("P-014", "SKU-014", "Монтажна піна", "шт", 35),
-            Product.Create("P-015", "SKU-015", "Утеплювач", "м²", 200)
+            Product.Create("P-015", "SKU-015", "Утеплювач", "м²", 200),
+            Product.Create("P-016", "SKU-016", "Герметик", "шт", 3),
+            Product.Create("P-017", "SKU-017", "Лак", "л", 5),
+            Product.Create("P-018", "SKU-018", "Кабель", "м", 8)
         };
     }
 }

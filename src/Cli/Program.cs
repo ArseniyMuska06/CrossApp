@@ -9,11 +9,66 @@ using Core.Services;
 using Core.Events;
 using Cli;
 using Cli.Notifications;
+using Core.Reports;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
-if (args.Length == 0 ||
-    (args.Length == 1 && args[0] == "--file"))
+if (args.Contains("demo-deferred"))
+{
+    var demoStore = StoreFactory.Create(args);
+    var demoService = new CatalogService(demoStore);
+
+    DeferredExecutionDemo.Run(demoService.All());
+
+    return 0;
+}
+
+var command = args.FirstOrDefault(a => !a.StartsWith("--"))
+    ?? "report-top";
+
+if (command.StartsWith("report-", StringComparison.Ordinal))
+{
+    var reportStore = StoreFactory.Create(args);
+    var reportService = new CatalogService(reportStore);
+    var items = reportService.All();
+
+    switch (command)
+    {
+        case "report-top":
+            Print(ReportService.TopByQuantity(items, 5));
+            break;
+
+        case "report-low":
+            Print(ReportService.LowStock(items, 10));
+            break;
+
+        case "report-groups":
+            foreach (var g in ReportService.ByUnit(items))
+            {
+                Console.WriteLine(
+                    $" {g.Key,-6} позицій: {g.Count,3} " +
+                    $"сумарно: {g.TotalQuantity,6}");
+            }
+            break;
+
+        case "report-sum":
+            var t = ReportService.Totals(items);
+
+            Console.WriteLine(
+                $"Позицій: {t.Items}, всього: {t.Total}, " +
+                $"середнє: {t.Average:F2}, макс: {t.Max}");
+            break;
+
+        default:
+            Console.WriteLine(
+                "report-top | report-low | report-groups | report-sum");
+            break;
+    }
+
+    return 0;
+}
+
+if (command == "demo-events")
 {
     ICatalogStore store = StoreFactory.Create(args);
     var service = new CatalogService(store);
@@ -407,5 +462,14 @@ static void TryDo(string title, Action action)
     {
         Console.WriteLine(
             $"{title}: {ex.GetType().Name} — {ex.Message}");
+    }
+}
+
+static void Print(IReadOnlyList<StockLine> lines)
+{
+    foreach (var l in lines)
+    {
+        Console.WriteLine(
+            $" {l.Sku,-10} {l.Name,-22} {l.Quantity,6} {l.Unit}");
     }
 }
