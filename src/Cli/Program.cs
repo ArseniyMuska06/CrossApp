@@ -13,6 +13,12 @@ using Core.Reports;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
+if (args.Contains("benchmark-reports"))
+{
+    ReportBenchmark.Run();
+    return 0;
+}
+
 if (args.Contains("demo-deferred"))
 {
     var demoStore = StoreFactory.Create(args);
@@ -59,9 +65,42 @@ if (command.StartsWith("report-", StringComparison.Ordinal))
                 $"середнє: {t.Average:F2}, макс: {t.Max}");
             break;
 
+        case "report-movements":
+            foreach (var row in ReportService.ByMovements(
+                items, SampleData.Movements()))
+            {
+                Console.WriteLine(
+                    $" {row.Sku,-10} {row.Name,-22} " +
+                    $"переміщень: {row.MovementCount,3} " +
+                    $"зміна: {row.TotalDelta,6:+0;-0;0}");
+            }
+            break;
+
+        case "report-top-movements":
+            foreach (var row in ReportService.TopByMovementCount(
+                items, SampleData.Movements(), 5))
+            {
+                Console.WriteLine(
+                    $" {row.Sku,-10} {row.Name,-22} " +
+                    $"переміщень: {row.MovementCount,3} " +
+                    $"зміна: {row.TotalDelta,6:+0;-0;0}");
+            }
+            break;
+
+        case "report-groups-query":
+            foreach (var g in ReportService.ByUnitQuery(items))
+            {
+                Console.WriteLine(
+                    $" {g.Key,-6} позицій: {g.Count,3} " +
+                    $"сумарно: {g.TotalQuantity,6}");
+            }
+            break;
+
         default:
             Console.WriteLine(
-                "report-top | report-low | report-groups | report-sum");
+                "report-top | report-low | report-groups | " +
+                "report-sum | report-movements | " +
+                "report-top-movements | report-groups-query");
             break;
     }
 

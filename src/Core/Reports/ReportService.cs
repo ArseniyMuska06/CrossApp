@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Core.Domain;
+using Core.Extensions;
 
 namespace Core.Reports;
 
@@ -19,14 +20,11 @@ public static class ReportService
                 p.Sku, p.Name, p.Quantity, p.Unit))
             .ToList();
 
-    // Перші n товарів із найбільшими залишками.
     public static IReadOnlyList<StockLine> TopByQuantity(
         IEnumerable<Product> source,
         int n) =>
         source
-            .OrderByDescending(p => p.Quantity)
-            .ThenBy(p => p.Sku, StringComparer.Ordinal)
-            .Take(n)
+            .TopBy(p => p.Quantity, n, p => p.Sku)
             .Select(p => new StockLine(
                 p.Sku, p.Name, p.Quantity, p.Unit))
             .ToList();
@@ -58,4 +56,55 @@ public static class ReportService
                 list.Max(p => p.Quantity)
             );
     }
+
+    public static IReadOnlyList<MovementSummary> ByMovements(
+        IEnumerable<Product> products,
+        IEnumerable<Movement> movements) =>
+        products
+            .GroupJoin(
+                movements,
+                p => p.Id,
+                m => m.ProductId,
+                (p, group) => new MovementSummary(
+                    p.Sku,
+                    p.Name,
+                    group.Count(),
+                    group.Sum(m => m.Delta)))
+            .OrderBy(s => s.Sku, StringComparer.Ordinal)
+            .ToList();
+
+    public static IReadOnlyList<MovementSummary> TopByMovementCount(
+        IEnumerable<Product> products,
+        IEnumerable<Movement> movements,
+        int n) =>
+        ByMovements(products, movements)
+            .TopBy(row => row.MovementCount, n, row => row.Sku)
+            .ToList();
+
+    public static IReadOnlyList<GroupSummary> ByUnitQuery(
+        IEnumerable<Product> source)
+    {
+        var query =
+            from product in source
+            group product by product.Unit.ToUpperInvariant() into g
+            orderby g.Sum(p => p.Quantity) descending
+            select new GroupSummary(
+                g.First().Unit,
+                g.Count(),
+                g.Sum(p => p.Quantity));
+
+        return query.ToList();
+    }
+
+    public static IReadOnlyList<StockLine> LowStockWithIntermediateList(
+        IEnumerable<Product> source,
+        int threshold) =>
+        source
+            .Where(p => p.Quantity < threshold)
+            .ToList()
+            .OrderBy(p => p.Quantity)
+            .ThenBy(p => p.Sku, StringComparer.Ordinal)
+            .Select(p => new StockLine(
+                p.Sku, p.Name, p.Quantity, p.Unit))
+            .ToList();
 }

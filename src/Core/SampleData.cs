@@ -28,4 +28,17 @@ public static class SampleData
             Product.Create("P-018", "SKU-018", "Кабель", "м", 8)
         };
     }
+
+    public static IEnumerable<Movement> Movements()
+    {
+        return new Movement[]
+        {
+            new Movement("P-001", 25),
+            new Movement("P-001", -10),
+            new Movement("P-002", 5),
+            new Movement("P-002", -2),
+            new Movement("P-016", 10),
+            new Movement("P-016", -7)
+        };
+    }
 }
