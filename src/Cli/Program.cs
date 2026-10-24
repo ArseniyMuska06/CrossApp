@@ -10,6 +10,7 @@ using Core.Events;
 using Cli;
 using Cli.Notifications;
 using Core.Reports;
+using Core.Storage;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
@@ -31,6 +32,78 @@ if (args.Contains("demo-deferred"))
 
 var command = args.FirstOrDefault(a => !a.StartsWith("--"))
     ?? "report-top";
+
+if (command == "import-async")
+{
+    if (args.Length < 2 || args[1].StartsWith("--"))
+    {
+        Console.WriteLine(
+            "Використання: import-async <шлях до JSON> [--file] [--timeout]");
+        return 1;
+    }
+
+    var dataPath = args[1];
+    var importStore = StoreFactory.Create(args);
+    var importService = new CatalogService(importStore);
+
+    using var cts = new CancellationTokenSource();
+
+    ConsoleCancelEventHandler cancelHandler = (_, e) =>
+    {
+        e.Cancel = true;
+        cts.Cancel();
+    };
+
+    Console.CancelKeyPress += cancelHandler;
+
+    try
+    {
+        if (args.Contains("--timeout"))
+            cts.CancelAfter(TimeSpan.FromSeconds(2));
+
+        var added = await importService.ImportAsync(
+            new JsonCatalogImporter(),
+            dataPath,
+            cts.Token);
+
+        Console.WriteLine($"Імпортовано записів: {added}");
+        return 0;
+    }
+    catch (OperationCanceledException)
+    {
+        Console.WriteLine("Імпорт скасовано.");
+        return 0;
+    }
+    catch (DomainException ex)
+    {
+        Console.WriteLine($"Дані відхилено: {ex.Message}");
+        return 1;
+    }
+    catch (FileNotFoundException)
+    {
+        Console.WriteLine($"Файл не знайдено: {dataPath}");
+        return 1;
+    }
+    catch (JsonException ex)
+    {
+        Console.WriteLine($"Помилка формату JSON: {ex.Message}");
+        return 1;
+    }
+    catch (IOException ex)
+    {
+        Console.WriteLine($"Помилка читання файлу: {ex.Message}");
+        return 1;
+    }
+    catch (UnauthorizedAccessException)
+    {
+        Console.WriteLine("Немає доступу до файлу.");
+        return 1;
+    }
+    finally
+    {
+        Console.CancelKeyPress -= cancelHandler;
+    }
+}
 
 if (command.StartsWith("report-", StringComparison.Ordinal))
 {
@@ -261,7 +334,7 @@ if (command == "demo-events")
     {
         service.Receive("NOT-FOUND", 10);
     }
-    catch (InvalidOperationException ex)
+    catch (DomainException ex)
     {
         Console.WriteLine($"Помилка: {ex.Message}");
     }
