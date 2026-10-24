@@ -23,7 +23,7 @@
   {
     "id": "P-004",
     "sku": "SKU-004",
-    "name": "",
+    "name": "dd",
     "unit": "шт",
     "quantity": 36
   },
@@ -32,6 +32,6 @@
     "sku": "SKU-005",
     "name": "Шпаклівка фінішна",
     "unit": "кг",
-    "quantity": "багато"
+    "quantity": 23
   }
 ]

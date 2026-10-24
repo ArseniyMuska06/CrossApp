@@ -41,22 +41,42 @@ public sealed class CatalogService(ICatalogStore store, INotificationSink? notif
     public async Task<int> ImportAsync(
         ICatalogImporter importer,
         string path,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        IProgress<int>? progress = null)
     {
+        ct.ThrowIfCancellationRequested();
+
         var items = await importer.LoadAsync(path, ct);
         var added = 0;
+        var processed = 0;
+        var lastPercent = 0;
+
+        progress?.Report(0);
 
         foreach (var item in items)
         {
             ct.ThrowIfCancellationRequested();
 
-            if (_store.GetById(item.Id) is not null)
-                continue;
+            if (_store.GetById(item.Id) is null)
+            {
+                _store.Add(item);
+                OnChanged(item, CatalogChangeKind.Added, item.Quantity);
+                added++;
+            }
 
-            _store.Add(item);
-            OnChanged(item, CatalogChangeKind.Added, item.Quantity);
-            added++;
+            processed++;
+
+            var percent = (int)(processed * 100L / items.Count);
+
+            if (percent != lastPercent)
+            {
+                progress?.Report(percent);
+                lastPercent = percent;
+            }
         }
+
+        if (items.Count == 0)
+            progress?.Report(100);
 
         return added;
     }
@@ -100,4 +120,28 @@ public sealed class CatalogService(ICatalogStore store, INotificationSink? notif
 
     public IReadOnlyList<Product> Search(Func<Product, bool> predicate) =>
         FindAll(predicate);
+
+    public async Task<int> ImportStreamAsync(
+        IStreamingCatalogImporter importer,
+        string path,
+        CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        var added = 0;
+
+        await foreach (var item in importer.LoadStreamAsync(path, ct))
+        {
+            ct.ThrowIfCancellationRequested();
+
+            if (_store.GetById(item.Id) is not null)
+                continue;
+
+            _store.Add(item);
+            OnChanged(item, CatalogChangeKind.Added, item.Quantity);
+            added++;
+        }
+
+        return added;
+    }
 }

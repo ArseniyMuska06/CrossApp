@@ -33,12 +33,12 @@ if (args.Contains("demo-deferred"))
 var command = args.FirstOrDefault(a => !a.StartsWith("--"))
     ?? "report-top";
 
-if (command == "import-async")
+if (command is "import-async" or "import-stream")
 {
     if (args.Length < 2 || args[1].StartsWith("--"))
     {
         Console.WriteLine(
-            "Використання: import-async <шлях до JSON> [--file] [--timeout]");
+            "Використання: import-async|import-stream <шлях до JSON> [--file] [--timeout]");
         return 1;
     }
 
@@ -46,12 +46,17 @@ if (command == "import-async")
     var importStore = StoreFactory.Create(args);
     var importService = new CatalogService(importStore);
 
-    using var cts = new CancellationTokenSource();
+    using var userCts = new CancellationTokenSource();
+    using var timeoutCts = new CancellationTokenSource();
+
+    using var cts = CancellationTokenSource.CreateLinkedTokenSource(
+        userCts.Token,
+        timeoutCts.Token);
 
     ConsoleCancelEventHandler cancelHandler = (_, e) =>
     {
         e.Cancel = true;
-        cts.Cancel();
+        userCts.Cancel();
     };
 
     Console.CancelKeyPress += cancelHandler;
@@ -59,19 +64,46 @@ if (command == "import-async")
     try
     {
         if (args.Contains("--timeout"))
-            cts.CancelAfter(TimeSpan.FromSeconds(2));
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(2));
 
-        var added = await importService.ImportAsync(
-            new JsonCatalogImporter(),
-            dataPath,
-            cts.Token);
+        IProgress<int> progress = new ImportProgress(percent =>
+        {
+            Console.Write($"\rХід імпорту: {percent,3}%");
+        });
+
+        int added;
+
+        try
+        {
+            added = command == "import-stream"
+                ? await importService.ImportStreamAsync(
+                    new StreamingJsonCatalogImporter(),
+                    dataPath,
+                    cts.Token)
+                : await importService.ImportAsync(
+                    new JsonCatalogImporter(),
+                    dataPath,
+                    cts.Token,
+                    progress);
+        }
+        finally
+        {
+            if (command == "import-async")
+                Console.WriteLine();
+        }
 
         Console.WriteLine($"Імпортовано записів: {added}");
         return 0;
     }
     catch (OperationCanceledException)
     {
-        Console.WriteLine("Імпорт скасовано.");
+        if (userCts.IsCancellationRequested)
+            Console.WriteLine("Імпорт скасовано користувачем.");
+        else if (timeoutCts.IsCancellationRequested)
+            Console.WriteLine("Імпорт скасовано: завершився таймаут.");
+        else
+            Console.WriteLine("Імпорт скасовано.");
+
         return 0;
     }
     catch (DomainException ex)
