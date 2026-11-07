@@ -11,8 +11,46 @@ using Cli;
 using Cli.Notifications;
 using Core.Reports;
 using Core.Storage;
+using Core.Configuration;
+using Microsoft.Extensions.Configuration;
+using System.Reflection;
 
 Console.OutputEncoding = System.Text.Encoding.UTF8;
+
+var envName = Environment.GetEnvironmentVariable("CROSSAPP_ENVIRONMENT")
+    ?? "Development";
+
+var config = new ConfigurationBuilder()
+    .SetBasePath(AppContext.BaseDirectory)
+    .AddJsonFile("appsettings.json", optional: false)
+    .AddJsonFile($"appsettings.{envName}.json", optional: true)
+    .AddUserSecrets(Assembly.GetExecutingAssembly(), optional: true)
+    .AddEnvironmentVariables(prefix: "CROSSAPP_")
+    .Build();
+
+var apiKey = config["Integration:ApiKey"];
+
+Console.WriteLine(string.IsNullOrWhiteSpace(apiKey)
+    ? "ApiKey: не заданий"
+    : "ApiKey: присутній");
+
+var options = config.Get<AppOptions>() ?? new AppOptions();
+
+var simpleDataPath = Environment.GetEnvironmentVariable("CROSSAPP_DATA_PATH");
+
+var storage = new StorageOptions
+{
+    DataPath = string.IsNullOrWhiteSpace(simpleDataPath)
+        ? options.Storage.DataPath
+        : simpleDataPath,
+    FileName = options.Storage.FileName
+};
+
+var catalogPath = storage.ResolveFullPath(AppContext.BaseDirectory);
+
+Console.WriteLine($"Каталог даних: {storage.DataPath}");
+Console.WriteLine($"Файл каталогу: {options.Storage.FileName}");
+Console.WriteLine($"Рівень логування: {options.Logging.MinimumLevel}");
 
 if (args.Contains("benchmark-reports"))
 {
@@ -22,7 +60,7 @@ if (args.Contains("benchmark-reports"))
 
 if (args.Contains("demo-deferred"))
 {
-    var demoStore = StoreFactory.Create(args);
+    var demoStore = StoreFactory.Create(args, catalogPath);
     var demoService = new CatalogService(demoStore);
 
     DeferredExecutionDemo.Run(demoService.All());
@@ -43,7 +81,7 @@ if (command is "import-async" or "import-stream")
     }
 
     var dataPath = args[1];
-    var importStore = StoreFactory.Create(args);
+    var importStore = StoreFactory.Create(args, catalogPath);
     var importService = new CatalogService(importStore);
 
     using var userCts = new CancellationTokenSource();
@@ -139,7 +177,7 @@ if (command is "import-async" or "import-stream")
 
 if (command.StartsWith("report-", StringComparison.Ordinal))
 {
-    var reportStore = StoreFactory.Create(args);
+    var reportStore = StoreFactory.Create(args, catalogPath);
     var reportService = new CatalogService(reportStore);
     var items = reportService.All();
 
@@ -214,7 +252,7 @@ if (command.StartsWith("report-", StringComparison.Ordinal))
 
 if (command == "demo-events")
 {
-    ICatalogStore store = StoreFactory.Create(args);
+    ICatalogStore store = StoreFactory.Create(args, catalogPath);
     var service = new CatalogService(store);
 
     var logPath = Path.Combine(
@@ -246,10 +284,7 @@ if (command == "demo-events")
 
     if (useFile)
     {
-        string dataPath = Path.Combine(
-            AppContext.BaseDirectory, "data", "catalog.json");
-
-        Console.WriteLine($"Файл даних: {dataPath}");
+        Console.WriteLine($"Файл даних: {catalogPath}");
     }
 
     var created = service.Add(

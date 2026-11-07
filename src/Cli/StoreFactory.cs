@@ -6,15 +6,12 @@ namespace Cli;
 
 public static class StoreFactory
 {
-    public static ICatalogStore Create(string[] args)
+    public static ICatalogStore Create(string[] args, string catalogPath)
     {
         bool useFile = args.Contains("--file");
 
-        string dataPath = Path.Combine(
-            AppContext.BaseDirectory, "data", "catalog.json");
-
         ICatalogStore innerStore = useFile
-            ? new FileCatalogStore(dataPath)
+            ? new FileCatalogStore(catalogPath)
             : new InMemoryCatalogStore(SampleData.Products());
 
         return new CachingCatalogStore(innerStore);

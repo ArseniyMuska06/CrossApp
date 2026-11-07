@@ -47,6 +47,7 @@ dotnet run --project src/Cli -f net10.0 -- data/sample.csv
   - Core.csproj — налаштування бібліотеки.
   - EnvironmentInfo.cs — клас EnvironmentInfo та запис EnvironmentReport.
   - DomainException.cs — виняток для порушень бізнес-правил.
+  - Configuration/AppOptions.cs — класи налаштувань застосунку
   - Events/ — типи для сповіщення про зміни каталогу.
     - CatalogChangeKind.cs — перелік видів змін.
     - CatalogChangedEventArgs.cs — дані події: Id, Kind, Delta,
@@ -303,6 +304,8 @@ Product.ToDto() і Product.FromDto().
 
 - net8.0, Debug: src/Cli/bin/Debug/net8.0/data/catalog.json;
 - net10.0, Debug: src/Cli/bin/Debug/net10.0/data/catalog.json.
+
+Починаючи з ЛР №9, шлях задається в конфігурації. За замовчуванням використовується data/items.json відносно каталогу зібраного CLI
 
 Це окремі файли для кожної цільової платформи.
 У публікації файл розташовується в підпапці data біля застосунку.
@@ -843,3 +846,63 @@ tests/Core.Tests/TestResults/<ідентифікатор>/coverage.cobertura.xml
 тести зосереджено на визначених сценаріях інваріантів,
 подій, звітів, некоректних даних і скасування.
 Повної автоматизованої перевірки всіх можливостей Core немає.
+
+## ЛР №9 — шляхи, JSON, конфігурація та секрети
+
+## Конфігурація та профілі запуску
+
+CrossApp читає `appsettings.json` і файл вибраного профілю з каталогу зібраного CLI. Профіль визначає змінна середовища `CROSSAPP_ENVIRONMENT`. Якщо її не задано, CLI вибирає `Development`.
+
+| Профіль | Налаштування |
+|---|---|
+| `Development` | Після базового файлу завантажується `appsettings.Development.json`. Він змінює `Logging:MinimumLevel` з `Information` на `Debug`. |
+| `Production` | Після базового файлу CLI шукає `appsettings.Production.json`. Цей файл необов’язковий. За його відсутності діють базові налаштування, зокрема рівень `Information`. |
+
+За стандартних налаштувань обидва профілі використовують `data/items.json` відносно `AppContext.BaseDirectory`. Наприклад, для збірки `Debug` під .NET 10 файл розташований у `src/Cli/bin/Debug/net10.0/data/items.json`. Запуск із кореня рішення та з `src/Cli` дає той самий шлях.
+
+### Ключі конфігурації
+
+| Ключ | Базове значення | Змінна середовища | Призначення |
+|---|---|---|---|
+| `EnvironmentName` | `Development` | `CROSSAPP_EnvironmentName` | Назва середовища у зв’язаному об’єкті `AppOptions`. Файл профілю CLI вибирає окремо через `CROSSAPP_ENVIRONMENT`. |
+| `Storage:DataPath` | `data` | `CROSSAPP_Storage__DataPath` | Каталог файлового сховища. Підтримує відносний або абсолютний шлях. |
+| `Storage:FileName` | `items.json` | `CROSSAPP_Storage__FileName` | Ім’я JSON-файлу з товарами. |
+| `Logging:MinimumLevel` | `Information` | `CROSSAPP_Logging__MinimumLevel` | Налаштований мінімальний рівень логування. |
+| `Warehouse:DefaultUnit` | `шт` | `CROSSAPP_Warehouse__DefaultUnit` | Одиниця вимірювання за замовчуванням для домену «Склад». |
+| `Integration:ApiKey` | Не задано | `CROSSAPP_Integration__ApiKey` | Навчальний ключ інтеграції. CLI виводить лише факт його наявності. |
+
+Джерела конфігурації застосовуються послідовно: `appsettings.json` → `appsettings.{профіль}.json` → `user-secrets` → змінні середовища з префіксом `CROSSAPP_`. Кожне наступне джерело може перевизначити попереднє. У назвах змінних подвійне підкреслення `__` відокремлює розділ від вкладеного ключа.
+
+Для каталогу даних додатково підтримується `CROSSAPP_DATA_PATH`. Якщо вона містить непорожній шлях, CLI використовує його навіть тоді, коли задано `CROSSAPP_Storage__DataPath`.
+
+### Приклад для PowerShell
+
+Виконати з кореня `CrossApp`:
+
+```powershell
+$env:CROSSAPP_ENVIRONMENT = "Production"
+$env:CROSSAPP_Storage__DataPath = "data-production"
+dotnet run --project src/Cli -f net10.0 -- demo-events --file
+
+$env:CROSSAPP_DATA_PATH = "data-override"
+dotnet run --project src/Cli -f net10.0 -- demo-events --file
+
+Remove-Item Env:CROSSAPP_ENVIRONMENT, Env:CROSSAPP_Storage__DataPath, Env:CROSSAPP_DATA_PATH
+```
+
+### Приклад для bash
+
+Виконати з кореня `CrossApp`. Змінні перед командою діють лише для цього запуску:
+
+```bash
+CROSSAPP_ENVIRONMENT=Production \
+CROSSAPP_Storage__DataPath=data-production \
+dotnet run --project src/Cli -f net10.0 -- demo-events --file
+
+CROSSAPP_ENVIRONMENT=Production \
+CROSSAPP_Storage__DataPath=data-production \
+CROSSAPP_DATA_PATH=data-override \
+dotnet run --project src/Cli -f net10.0 -- demo-events --file
+```
+
+В обох прикладах перший запуск показує в рядку `Файл даних` шлях до `data-production/items.json`, а другий — до `data-override/items.json`. Команда `demo-events --file` записує демонстраційні товари у відповідний файл.

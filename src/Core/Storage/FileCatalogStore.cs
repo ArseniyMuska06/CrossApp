@@ -2,6 +2,7 @@ using System.Text.Json;
 using Core.Abstractions;
 using Core.Domain;
 using Core.Dto;
+using System.Text.Encodings.Web;
 
 namespace Core.Storage;
 
@@ -9,7 +10,10 @@ public sealed class FileCatalogStore(string path) : ICatalogStore
 {
     private static readonly JsonSerializerOptions Options = new()
     {
-        WriteIndented = true
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
     private readonly Dictionary<string, Product> _cache =
@@ -26,7 +30,7 @@ public sealed class FileCatalogStore(string path) : ICatalogStore
         if (File.Exists(_path))
         {
             var dtos = JsonSerializer.Deserialize<List<ProductDto>>(
-                File.ReadAllText(_path)) ?? [];
+                File.ReadAllText(_path), Options) ?? [];
 
             foreach (var dto in dtos)
             {
@@ -42,11 +46,12 @@ public sealed class FileCatalogStore(string path) : ICatalogStore
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
 
-        File.WriteAllText(
-            _path,
-            JsonSerializer.Serialize(
-                _cache.Values.Select(p => p.ToDto()).ToList(),
-                Options));
+        var dtos = _cache.Values.Select(product => product.ToDto()).ToList();
+        string json = JsonSerializer.Serialize(dtos, Options);
+        string tempPath = _path + ".tmp";
+
+        File.WriteAllText(tempPath, json);
+        File.Move(tempPath, _path, overwrite: true);
     }
 
     public IReadOnlyList<Product> List()
