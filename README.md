@@ -47,6 +47,8 @@ dotnet run --project src/Cli -f net10.0 -- data/sample.csv
   - CatalogServiceTests.cs — перевірки стану та події.
   - ReportServiceTests.cs — перевірки звітів.
   - ImportTests.cs — перевірки скасування та некоректного запису.
+- tests/Api.Tests/ — інтеграційні тести HTTP API.
+  - ProductEndpointsTests.cs — перевірка POST і GET за отриманим Location.
 - src/Core/ — бібліотека доменної моделі, збору інформації про середовище та імпорту даних.
   - Core.csproj — налаштування бібліотеки.
   - EnvironmentInfo.cs — клас EnvironmentInfo та запис EnvironmentReport.
@@ -108,9 +110,12 @@ dotnet run --project src/Cli -f net10.0 -- data/sample.csv
   - Api.csproj — налаштування вебпроєкту та посилання на Core.
   - Program.cs — реєстрація DI, обробка помилок, OpenAPI і Scalar.
   - Contracts/ProductDto.cs — вихідний DTO товару.
-  - Contracts/SaveProductRequest.cs — вхідний DTO з валідацією.
+  - Contracts/SaveProductRequest.cs — вхідний DTO для створення й оновлення товару.
   - Endpoints/ProductEndpoints.cs — п’ять CRUD-маршрутів.
   - Api.http — запити для перевірки циклу CRUD.
+  - Validation/SaveProductRequestValidator.cs — правила FluentValidation.
+  - Filters/SaveProductValidationFilter.cs — перевірка DTO перед POST і PUT.
+  - Errors/DomainExceptionHandler.cs — перетворення DomainException на 409 Conflict.
 
 Напрямки залежностей: Cli → Core та Api → Core.
 
@@ -770,6 +775,13 @@ dotnet run --project src/Cli -- import-async data/large.json --timeout
 - JsonException — помилка формату або невідповідний тип значення JSON.
 - OperationCanceledException — скасування, яке обробляється окремо.
 
+Окремий DomainExceptionHandler реалізує IExceptionHandler
+і перетворює DomainException на 409 Conflict у форматі ProblemDetails.
+Клієнту повертається загальне повідомлення без внутрішнього тексту
+винятку та stack trace. Інші необроблені винятки повертають 500.
+
+Перевірку 409 виконано через тимчасовий діагностичний маршрут.
+
 ### Запуск тестів
 
 ```powershell
@@ -1025,7 +1037,7 @@ curl.exe -i "http://localhost:5080/api/products/$productId"
 
 | Метод | Шлях | Тіло запиту | Основні коди відповіді |
 |---|---|---|---|
-| GET | /api/products | Немає | 200 |
+| GET | /api/products?page=1&pageSize=20&search=... | Немає | 200, 400 |
 | GET | /api/products/{id} | Немає | 200, 404 |
 | POST | /api/products | SaveProductRequest | 201, 400 |
 | PUT | /api/products/{id} | SaveProductRequest | 200, 400, 404 |
@@ -1051,6 +1063,14 @@ API використовує окремі DTO з простору імен Api.C
 - Unit — обов’язкова одиниця вимірювання, максимум 20 символів.
 - Quantity — ціле невід’ємне число; нуль дозволений.
 - Note — необов’язкова примітка.
+
+Валідацію реалізовано в SaveProductRequestValidator за допомогою
+FluentValidation. Валідатор зареєстрований у DI як Scoped.
+
+SaveProductValidationFilter підключений до POST і PUT через
+AddEndpointFilter. Якщо дані некоректні, фільтр повертає 400
+з ValidationProblemDetails, не виконуючи обробник маршруту.
+SaveProductRequest містить лише дані.
 
 Порушення правил повертає 400 з ValidationProblemDetails:
 поле errors містить повідомлення для відповідних полів.
@@ -1088,6 +1108,58 @@ UseStatusCodePages додає тіло для помилкових відпов�
 
 Після POST потрібно скопіювати отриманий id у змінну
 productId на початку Api.http. API між запитами не перезапускають.
+
+### Пагінація та пошук
+
+GET /api/products підтримує параметри:
+
+| Параметр | Призначення | За замовчуванням |
+|---|---|---|
+| page | Номер сторінки, починаючи з 1 | 1 |
+| pageSize | Кількість товарів на сторінці, від 1 до 100 | 20 |
+| search | Пошук за артикулом або назвою без урахування регістру | Без фільтрації |
+
+Відповідь має формат { items, total }:
+- items — товари поточної сторінки;
+- total — кількість знайдених товарів до застосування пагінації.
+
+Товари впорядковуються за ID. Для сторінки за межами результатів
+повертається порожній items зі збереженням total.
+Некоректні page або pageSize спричиняють відповідь 400.
+
+Приклад:
+
+```powershell
+curl.exe -i "http://localhost:5080/api/products?page=1&pageSize=2&search=Cable"
+```
+
+### Інтеграційний тест API
+
+Проєкт tests/Api.Tests використовує WebApplicationFactory<Program>.
+Тестовий сервер запускається в пам’яті; окремо запускати API
+на порту 5080 не потрібно.
+
+Тест CreateProduct_ThenGetByLocation_ReturnsCreatedProduct перевіряє:
+- POST повертає 201 Created;
+- заголовок Location містить адресу створеного товару;
+- GET за цією адресою повертає 200 OK;
+- отримані дані відповідають створеному товару.
+
+Запуск інтеграційного тесту:
+
+```powershell
+dotnet test tests/Api.Tests/Api.Tests.csproj --logger "console;verbosity=normal"
+```
+
+Запуск усіх тестів:
+
+```powershell
+dotnet test
+```
+
+За результатами перевірки пройшли всі 9 тестів:
+8 тестів Core.Tests та 1 інтеграційний тест Api.Tests.
+Помилок і пропущених тестів немає.
 
 ### Поточні обмеження
 

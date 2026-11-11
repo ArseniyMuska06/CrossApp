@@ -37,3 +37,18 @@ DELETE {{baseUrl}}/api/products/{{productId}}
 
 ### 7. READ — перевірити відсутність товару (очікується 404)
 GET {{baseUrl}}/api/products/{{productId}}
+
+### Перша сторінка — два товари
+GET {{baseUrl}}/api/products?page=1&pageSize=2
+
+### Друга сторінка
+GET {{baseUrl}}/api/products?page=2&pageSize=2
+
+### Пошук за артикулом
+GET {{baseUrl}}/api/products?page=1&pageSize=20&search=A-100
+
+### Некоректний номер сторінки — очікується 400
+GET {{baseUrl}}/api/products?page=0&pageSize=20
+
+### Некоректний розмір сторінки — очікується 400
+GET {{baseUrl}}/api/products?page=1&pageSize=0
