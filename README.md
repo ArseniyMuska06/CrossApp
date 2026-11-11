@@ -33,8 +33,12 @@ dotnet run --project src/Cli -f net8.0 -- data/sample.csv
 dotnet run --project src/Cli -f net10.0 -- data/sample.csv
 ```
 
- ## Середовище
- .NET SDK 8.0, Windows 11 x64
+## Середовище
+- Windows 11 x64.
+- .NET SDK 10 — для API з цільовою платформою net10.0.
+- Для запуску CLI під net8.0 потрібен відповідний .NET Runtime 8.
+- PowerShell 7 — для наведених прикладів команд.
+- Для виконання Api.http у VS Code використовується розширення REST Client.
 
 ## Структура solution
 - CrossApp.sln — файл рішення.
@@ -100,9 +104,22 @@ dotnet run --project src/Cli -f net10.0 -- data/sample.csv
   - DeferredExecutionDemo.cs — демонстрація відкладеного виконання LINQ.
 - data/ — тестові CSV- та JSON-файли.
 
-Напрямок залежності: Cli → Core.
-Core містить доменну модель, збирає інформацію про середовище та виконує імпорт даних. Класи в Core/Domain не залежать від Console, File або Cli.
-Cli відповідає за взаємодію з користувачем і консольний вивід.
+- src/Api/ — HTTP API на ASP.NET Core Minimal API.
+  - Api.csproj — налаштування вебпроєкту та посилання на Core.
+  - Program.cs — реєстрація DI, обробка помилок, OpenAPI і Scalar.
+  - Contracts/ProductDto.cs — вихідний DTO товару.
+  - Contracts/SaveProductRequest.cs — вхідний DTO з валідацією.
+  - Endpoints/ProductEndpoints.cs — п’ять CRUD-маршрутів.
+  - Api.http — запити для перевірки циклу CRUD.
+
+Напрямки залежностей: Cli → Core та Api → Core.
+
+Cli забезпечує консольну взаємодію, Api — доступ через HTTP.
+Обидва проєкти використовують спільний доменний шар Core.
+Core не залежить від Cli, Api або ASP.NET Core.
+
+CLI та API працюють в окремих процесах і не мають спільного
+екземпляра сховища в пам’яті.
 
 ## Публікація
 Команди виконуються з кореня CrossApp.
@@ -906,3 +923,175 @@ dotnet run --project src/Cli -f net10.0 -- demo-events --file
 ```
 
 В обох прикладах перший запуск показує в рядку `Файл даних` шлях до `data-production/items.json`, а другий — до `data-override/items.json`. Команда `demo-events --file` записує демонстраційні товари у відповідний файл.
+
+## ЛР №10 — Minimal API, CRUD, валідація та OpenAPI
+
+Команди запуску виконуються з кореня рішення CrossApp.
+
+### Запуск
+
+```powershell
+dotnet run --project src/Api --no-launch-profile --urls http://localhost:5080 --environment Development
+```
+
+API використовує порт **5080**. Параметр `--no-launch-profile` вимикає
+налаштування профілю запуску, а `--environment Development` явно задає
+середовище розробки.
+
+- Базова адреса: http://localhost:5080
+- OpenAPI: http://localhost:5080/openapi/v1.json
+- Scalar UI: http://localhost:5080/scalar/v1
+
+OpenAPI та Scalar доступні лише в Development.
+Для зупинки сервера натисніть Ctrl+C.
+
+Використовується сховище в пам’яті: після перезапуску API товари не зберігаються.
+
+### Приклади запитів через curl
+
+Запустіть API, а запити виконуйте в іншому вікні PowerShell.
+
+Отримати список товарів:
+
+```powershell
+curl.exe -i "http://localhost:5080/api/products"
+```
+
+Створити товар:
+
+```powershell
+'{"sku":"A-100","name":"Cable","unit":"m","quantity":40}' |
+    curl.exe -i -X POST "http://localhost:5080/api/products" `
+        -H "Content-Type: application/json" `
+        --data-binary "@-"
+```
+
+Очікується `201 Created`. Заголовок `Location` містить адресу створеного
+товару, а тіло відповіді — його дані з полем `id`.
+
+Скопіюйте отриманий `id` у змінну:
+
+```powershell
+$productId = "ВСТАВТЕ_ID_ТОВАРУ"
+```
+
+Отримати товар за ID:
+
+```powershell
+curl.exe -i "http://localhost:5080/api/products/$productId"
+```
+
+Очікується `200 OK`.
+
+Оновити товар:
+
+```powershell
+'{"sku":"A-100","name":"Updated cable","unit":"m","quantity":25}' |
+    curl.exe -i -X PUT "http://localhost:5080/api/products/$productId" `
+        -H "Content-Type: application/json" `
+        --data-binary "@-"
+```
+
+Очікується `200 OK` з оновленими даними.
+
+Перевірити валідацію:
+
+```powershell
+'{"sku":"","name":"X","unit":"","quantity":-1}' |
+    curl.exe -i -X POST "http://localhost:5080/api/products" `
+        -H "Content-Type: application/json" `
+        --data-binary "@-"
+```
+
+Очікується `400 Bad Request` із повідомленнями в полі `errors`.
+
+Видалити товар:
+
+```powershell
+curl.exe -i -X DELETE "http://localhost:5080/api/products/$productId"
+```
+
+Очікується `204 No Content`.
+
+Перевірити відсутність видаленого товару:
+
+```powershell
+curl.exe -i "http://localhost:5080/api/products/$productId"
+```
+
+Очікується `404 Not Found`.
+
+### Маршрути
+
+| Метод | Шлях | Тіло запиту | Основні коди відповіді |
+|---|---|---|---|
+| GET | /api/products | Немає | 200 |
+| GET | /api/products/{id} | Немає | 200, 404 |
+| POST | /api/products | SaveProductRequest | 201, 400 |
+| PUT | /api/products/{id} | SaveProductRequest | 200, 400, 404 |
+| DELETE | /api/products/{id} | Немає | 204, 404 |
+
+POST повертає заголовок Location з адресою створеного товару.
+PUT замінює дані товару зі збереженням його ID.
+
+### DTO та валідація
+
+API використовує окремі DTO з простору імен Api.Contracts:
+
+- ProductDto — дані товару у відповіді сервера.
+- SaveProductRequest — дані для створення та оновлення товару.
+
+Доменна сутність Product безпосередньо в JSON не повертається.
+Метод ToApiDto перетворює її на вихідний DTO.
+Наявний Core.Dto.ProductDto збережено для попередньої функціональності.
+
+Правила валідації:
+- Sku — обов’язковий.
+- Name — обов’язкова назва, максимум 200 символів.
+- Unit — обов’язкова одиниця вимірювання, максимум 20 символів.
+- Quantity — ціле невід’ємне число; нуль дозволений.
+- Note — необов’язкова примітка.
+
+Порушення правил повертає 400 з ValidationProblemDetails:
+поле errors містить повідомлення для відповідних полів.
+
+### DI та сховище
+
+ICatalogStore зареєстровано як Singleton із реалізацією
+InMemoryCatalogStore. Обробники маршрутів отримують сховище
+через параметри делегатів.
+
+Один екземпляр сховища використовується протягом роботи API.
+Доступ до словника захищено через lock. Блокування захищає
+окремі операції, але не робить послідовність GetById → Update
+однією атомарною операцією.
+
+### Обробка помилок
+
+AddProblemDetails і UseExceptionHandler забезпечують структуровані
+відповіді на необроблені винятки без stack trace та внутрішніх
+повідомлень у відповіді клієнту.
+
+UseStatusCodePages додає тіло для помилкових відповідей,
+які інакше не містили б його, наприклад 404.
+
+### Перевірка через Api.http
+
+Файл src/Api/Api.http містить послідовність запитів:
+
+1. POST — створення товару, очікується 201.
+2. GET списку та GET за ID — читання, очікується 200.
+3. PUT — оновлення, очікується 200.
+4. GET — перевірка змінених даних.
+5. DELETE — видалення, очікується 204.
+6. GET за видаленим ID — очікується 404.
+
+Після POST потрібно скопіювати отриманий id у змінну
+productId на початку Api.http. API між запитами не перезапускають.
+
+### Поточні обмеження
+
+Методи ICatalogStore та обробники CRUD залишаються синхронними.
+Асинхронний імпорт у CLI не є асинхронним контрактом сховища.
+Вимога методички ЛР №10 щодо await і CancellationToken
+у викликах сховища поки не реалізована.
