@@ -6,14 +6,27 @@ using Core.Abstractions;
 using Core.Storage;
 using Scalar.AspNetCore;
 using Api.Errors;
+using Microsoft.Data.Sqlite;
+using Infrastructure;
+using Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+var rawConnectionString = builder.Configuration.GetConnectionString("AppDb")
+    ?? "Data Source=data/app.db";
+
+var csb = new SqliteConnectionStringBuilder(rawConnectionString);
+
+var databasePath = Path.GetFullPath(
+    csb.DataSource,
+    builder.Environment.ContentRootPath);
+
+Directory.CreateDirectory(Path.GetDirectoryName(databasePath)!);
+csb.DataSource = databasePath;
+
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
-
-builder.Services.AddSingleton<ICatalogStore>(
-    _ => new InMemoryCatalogStore());
 
 builder.Services.AddScoped<
     IValidator<SaveProductRequest>,
@@ -21,6 +34,11 @@ builder.Services.AddScoped<
 
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<DomainExceptionHandler>();
+
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlite(csb.ConnectionString));
+
+builder.Services.AddScoped<ICatalogStore, EfCatalogStore>();
 
 var app = builder.Build();
 

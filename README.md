@@ -106,6 +106,11 @@ dotnet run --project src/Cli -f net10.0 -- data/sample.csv
   - DeferredExecutionDemo.cs — демонстрація відкладеного виконання LINQ.
 - data/ — тестові CSV- та JSON-файли.
 
+- src/Infrastructure/ — реалізація сховища API на EF Core і SQLite.
+  - Persistence/ — ProductRow, BatchRow та AppDbContext.
+  - EfCatalogStore.cs — реалізація інтерфейсу ICatalogStore.
+  - Migrations/ — файли міграцій і знімок моделі.
+
 - src/Api/ — HTTP API на ASP.NET Core Minimal API.
   - Api.csproj — налаштування вебпроєкту та посилання на Core.
   - Program.cs — реєстрація DI, обробка помилок, OpenAPI і Scalar.
@@ -117,7 +122,7 @@ dotnet run --project src/Cli -f net10.0 -- data/sample.csv
   - Filters/SaveProductValidationFilter.cs — перевірка DTO перед POST і PUT.
   - Errors/DomainExceptionHandler.cs — перетворення DomainException на 409 Conflict.
 
-Напрямки залежностей: Cli → Core та Api → Core.
+Напрямки залежностей: Cli → Core, Api → Core, Api → Infrastructure, Infrastructure → Core.
 
 Cli забезпечує консольну взаємодію, Api — доступ через HTTP.
 Обидва проєкти використовують спільний доменний шар Core.
@@ -1167,3 +1172,49 @@ dotnet test
 Асинхронний імпорт у CLI не є асинхронним контрактом сховища.
 Вимога методички ЛР №10 щодо await і CancellationToken
 у викликах сховища поки не реалізована.
+
+## ЛР №11 — EF Core і SQLite
+
+API зберігає товари в базі SQLite через EfCatalogStore. Один товар у таблиці
+Products може мати кілька записів про надходження в таблиці Batches.
+
+### Рядок підключення
+
+У файлі `src/Api/appsettings.json` ключ `ConnectionStrings:AppDb` має
+значення `Data Source=data/app.db`. API обчислює повний шлях до файлу
+від `ContentRootPath` і створює каталог, якщо його ще немає.
+Під час локального запуску проєкту файл бази розташований у `src/Api/data/app.db`.
+
+### Міграції
+
+Команди виконуються з кореня CrossApp. Потрібен інструмент `dotnet-ef` версії 10.x.
+
+Початкову міграцію створено командою:
+
+```powershell
+dotnet ef migrations add InitialCreate --project src/Infrastructure --startup-project src/Api
+```
+
+Після клонування репозиторію застосуйте вже збережені міграції:
+
+```powershell
+dotnet ef database update --project src/Infrastructure --startup-project src/Api
+```
+
+Команда створює базу зі схемою Products і Batches. Застосовані міграції
+реєструються в таблиці `__EFMigrationsHistory`. Файли міграцій і знімок
+моделі зберігаються в Git у `src/Infrastructure/Migrations/`.
+
+### Скидання локальної бази
+
+Скидання видаляє всі товари та записи про надходження. Щоб отримати
+порожню базу, зупиніть API через Ctrl+C, закрийте переглядач SQLite
+і виконайте команди по черзі:
+
+```powershell
+dotnet ef database drop --project src/Infrastructure --startup-project src/Api
+dotnet ef database update --project src/Infrastructure --startup-project src/Api
+```
+
+Підтвердьте видалення після першої команди. Друга команда відтворить
+схему за збереженими міграціями.
